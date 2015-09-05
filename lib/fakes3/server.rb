@@ -108,7 +108,7 @@ module FakeS3
         if_modified_since = request["If-Modified-Since"]
         if if_modified_since
           time = Time.httpdate(if_modified_since)
-          if time >= Time.iso8601(real_obj.modified_date)
+          if time >= (real_obj.item ? real_obj.item.updated_at : Time.iso8601(real_obj.modified_date))
             response.status = 304
             return
           end
@@ -116,46 +116,61 @@ module FakeS3
 
         response.status = 200
         response['Content-Type'] = real_obj.content_type
-        stat = File::Stat.new(real_obj.io.path)
 
-        response['Last-Modified'] = Time.iso8601(real_obj.modified_date).httpdate()
-        response.header['ETag'] = "\"#{real_obj.md5}\""
-        response['Accept-Ranges'] = "bytes"
-        response['Last-Ranges'] = "bytes"
-        response['Access-Control-Allow-Origin'] = '*'
-
-        real_obj.custom_metadata.each do |header, value|
-          response.header['x-amz-meta-' + header] = value
-        end
-
-        content_length = stat.size
-
-        # Added Range Query support
-        if range = request.header["range"].first
-          response.status = 206
-          if range =~ /bytes=(\d*)-(\d*)/
-            start = $1.to_i
-            finish = $2.to_i
-            finish_str = ""
-            if finish == 0
-              finish = content_length - 1
-              finish_str = "#{finish}"
-            else
-              finish_str = finish.to_s
-            end
-
-            bytes_to_read = finish - start + 1
-            response['Content-Range'] = "bytes #{start}-#{finish_str}/#{content_length}"
-            real_obj.io.pos = start
-            response.body = real_obj.io.read(bytes_to_read)
-            return
+        if real_obj.item
+          response['Last-Modified'] = real_obj.item.updated_at.httpdate()
+          response.header['ETag'] = "\"#{real_obj.md5}\""
+          response['Access-Control-Allow-Origin'] = '*'
+          real_obj.custom_metadata.each do |header, value|
+            response.header['x-amz-meta-' + header] = value
           end
-        end
-        response['Content-Length'] = File::Stat.new(real_obj.io.path).size
-        if s_req.http_verb == 'HEAD'
-          response.body = ""
+          response['Content-Length'] = real_obj.item.content.size
+          if s_req.http_verb == 'HEAD'
+            response.body = ''
+          else
+            response.body = real_obj.item.content
+          end
         else
-          response.body = real_obj.io
+          stat = File::Stat.new(real_obj.io.path)
+          response['Last-Modified'] = Time.iso8601(real_obj.modified_date).httpdate()
+          response.header['ETag'] = "\"#{real_obj.md5}\""
+          response['Accept-Ranges'] = "bytes"
+          response['Last-Ranges'] = "bytes"
+          response['Access-Control-Allow-Origin'] = '*'
+
+          real_obj.custom_metadata.each do |header, value|
+            response.header['x-amz-meta-' + header] = value
+          end
+
+          content_length = stat.size
+
+          # Added Range Query support
+          if range = request.header["range"].first
+            response.status = 206
+            if range =~ /bytes=(\d*)-(\d*)/
+              start = $1.to_i
+              finish = $2.to_i
+              finish_str = ""
+              if finish == 0
+                finish = content_length - 1
+                finish_str = "#{finish}"
+              else
+                finish_str = finish.to_s
+              end
+
+              bytes_to_read = finish - start + 1
+              response['Content-Range'] = "bytes #{start}-#{finish_str}/#{content_length}"
+              real_obj.io.pos = start
+              response.body = real_obj.io.read(bytes_to_read)
+              return
+            end
+          end
+          response['Content-Length'] = File::Stat.new(real_obj.io.path).size
+          if s_req.http_verb == 'HEAD'
+            response.body = ""
+          else
+            response.body = real_obj.io
+          end
         end
       end
     end
