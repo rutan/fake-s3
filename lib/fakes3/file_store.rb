@@ -63,13 +63,25 @@ module FakeS3
     end
 
     def buckets
-      # :)
-      []
+      Item.select(:bucket).distinct.map do |item|
+        Bucket.new(item.bucket, Time.now, [])
+      end
     end
 
     def get_bucket(bucket)
-      # :)
-      Bucket.new(bucket, Time.now, [])
+      items = Item.where(bucket: bucket.to_s).map do |item|
+        metadata = YAML.load(item.metadata)
+        real_obj = S3Object.new
+        real_obj.name = item.key
+        real_obj.md5 = metadata[:md5]
+        real_obj.content_type = metadata.fetch(:content_type) { "application/octet-stream" }
+        real_obj.item = item
+        real_obj.modified_date = item.updated_at.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+        real_obj.size = metadata.fetch(:size) { 0 }
+        real_obj.custom_metadata = metadata.fetch(:custom_metadata) { {} }
+        real_obj
+      end
+      Bucket.new(bucket, Time.now, items)
     end
 
     def create_bucket(bucket)

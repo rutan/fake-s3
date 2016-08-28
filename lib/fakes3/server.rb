@@ -544,7 +544,7 @@ module FakeS3
     end
 
     def serve
-      @server.mount "/", Servlet, @store,@hostname
+      @server.mount "/", Servlet, @store, @hostname
       trap "INT" do @server.shutdown end
       @server.start
     end
